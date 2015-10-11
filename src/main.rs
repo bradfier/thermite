@@ -6,11 +6,11 @@ use std::env;
 use std::process;
 use getopts::Options;
 
-struct ThermiteOptions<'a> {
+struct ThermiteOptions {
     threads: u8,
     blocksize: usize,
     pagesize: usize,
-    target: &'a str,
+    target: String,
 }
 
 fn is_power2(x: u32) -> bool {
@@ -22,79 +22,74 @@ fn random_bytes(n: u32) -> Vec<u8> {
 }
 
 fn print_usage(program: &str, opts: Options) {
-    let brief = format!("Usage: {} [options] TARGET", program);
+    let brief = format!("Usage: {} [options]", program);
     print!("{}", opts.usage(&brief));
 }
 
-fn parse_opts<'a>(args: Vec<String>) -> ThermiteOptions<'a> {
+macro_rules! opt_with_default {
+    ($matched:expr, $parse_type:ty, $default:expr, $error:expr) => {
+        match $matched {
+            Some(x) => {
+                match x.parse::<$parse_type>() {
+                    Ok(x) => { x },
+                    Err(_) => {
+                        println!($error);
+                        process::exit(1)
+                    },
+                }
+            },
+            None => { $default },
+        };
+    };
+}
+
+fn parse_opts(args: Vec<String>) -> ThermiteOptions {
     // TODO Parameterize the defaults for the arguments
     let program = args[0].clone();
 
     let mut opts = Options::new();
 
+    opts.optflag("h", "help", "print this help text");
     opts.optopt("t", "threads", "number of I/O threads","");
     opts.optopt("b", "blocksize", "block size to write","");
     opts.optopt("p", "pagesize", "dedupe page-size (16384 for 3PAR)","");
+    opts.optopt("f", "file", "target file or block device","/dev/sdX");
 
     let matches = match opts.parse(&args[1..]) {
         Ok(m) => { m },
         Err(f) => { panic!(f.to_string()) }
     };
 
-    let thread_arg = matches.opt_str("t");
-    let thread_match = match thread_arg {
-        Some(x) => {
-            match x.parse::<u8>() {
-                Ok(x) => { x },
-                Err(_) => {
-                    println!("ERROR: Threads argument must be an \
-                             integer between 1 and 255");
-                    process::exit(1)
-                },
-            }
+    if matches.opt_present("h") {
+        print_usage(&program, opts);
+        process::exit(1);
+    }
+
+    let file_match = match matches.opt_str("f") {
+        Some(x) => { x },
+        None => {
+            println!("File is a required parameter.");
+            process::exit(1)
         },
-        None => { 1 },
     };
 
-    let blocksize_match = match matches.opt_str("b") {
-        Some(x) => {
-            match x.parse::<usize>() {
-                Ok(x) => { x },
-                Err(_) => {
-                    println!("ERROR: Blocksize must be a numeric value.");
-                    process::exit(1)
-                },
-            }
-        },
-        None => { 512 },
-    };
+    let thread_match = opt_with_default!(matches.opt_str("t"), u8, 1,
+            "ERROR: Threads must be a numeric value between 1 and 255.");
+    let blocksize_match = opt_with_default!(matches.opt_str("b"), usize, 512,
+            "ERROR: Blocksize must be a positive power of 2.");
+    let pagesize_match = opt_with_default!(matches.opt_str("p"), usize, 0,
+            "ERROR: Pagesize must be a positive power of 2.");
 
-    let pagesize_match = match matches.opt_str("p") {
-        Some(x) => {
-            match x.parse::<usize>() {
-                Ok(x) => {
-                    match x <= blocksize_match {
-                        true => { x },
-                        false => {
-                            println!("Pagesize must exceed blocksize.");
-                            process::exit(1)
-                        },
-                    }
-                },
-                Err(_) => {
-                    println!("ERROR: Unknwon");
-                    process::exit(1)
-                },
-            }
-        },
-        None => { 0 },
-    };
+    if (pagesize_match != 0) && (pagesize_match > blocksize_match) {
+        println!("ERROR: Pagesize, if supplied, must be smaller than blocksize.");
+        process::exit(1);
+    }
 
     ThermiteOptions {
         threads: thread_match,
         blocksize: blocksize_match,
         pagesize: pagesize_match,
-        target: "/home/bradfier/file.bin",
+        target: file_match,
     }
 }
 
