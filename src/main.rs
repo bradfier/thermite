@@ -1,20 +1,31 @@
 extern crate getopts;
 extern crate rand;
+extern crate num;
 
-use std::thread;
 use std::env;
 use std::process;
+use std::fs;
+use rand::Rng;
+use std::io::{Write,Seek,SeekFrom};
 use getopts::Options;
 
 struct ThermiteOptions {
     threads: u8,
-    blocksize: usize,
-    pagesize: usize,
+    blocksize: u64,
+    pagesize: u64,
     target: String,
+    mode: IOMode,
 }
 
-fn is_power2(x: u32) -> bool {
-    (x & x-1) == 0
+enum IOMode {
+    Sequential,
+    Random,
+}
+
+fn is_power2<T: num::PrimInt>(x: T) -> bool {
+    let _0 = T::zero();
+    let _1 = T::one();
+    (x & x-_1) == _0
 }
 
 fn random_bytes(n: u32) -> Vec<u8> {
@@ -26,15 +37,25 @@ fn print_usage(program: &str, opts: Options) {
     print!("{}", opts.usage(&brief));
 }
 
-macro_rules! opt_with_default {
+macro_rules! error_exit {
+    ($errno:expr, $reason:expr) => {
+        println!($reason);
+        process::exit($errno);
+    };
+}
+
+macro_rules! numeric_opt {
     ($matched:expr, $parse_type:ty, $default:expr, $error:expr) => {
         match $matched {
             Some(x) => {
                 match x.parse::<$parse_type>() {
-                    Ok(x) => { x },
+                    Ok(x) => {
+                        if x == 0 {
+                            error_exit!(1, $error);
+                        } else { x }
+                    },
                     Err(_) => {
-                        println!($error);
-                        process::exit(1)
+                        error_exit!(1, $error);
                     },
                 }
             },
@@ -50,10 +71,11 @@ fn parse_opts(args: Vec<String>) -> ThermiteOptions {
     let mut opts = Options::new();
 
     opts.optflag("h", "help", "print this help text");
-    opts.optopt("t", "threads", "number of I/O threads","");
-    opts.optopt("b", "blocksize", "block size to write","");
-    opts.optopt("p", "pagesize", "dedupe page-size (16384 for 3PAR)","");
-    opts.optopt("f", "file", "target file or block device","/dev/sdX");
+    opts.optopt("m", "mode", "I/O mode, 'sequential' or 'random'", "");
+    opts.optopt("t", "threads", "number of I/O threads", "");
+    opts.optopt("b", "blocksize", "block size to write", "");
+    opts.optopt("p", "pagesize", "dedupe page-size (16384 for 3PAR)", "");
+    opts.optopt("f", "file", "target file or block device", "/dev/sdX");
 
     let matches = match opts.parse(&args[1..]) {
         Ok(m) => { m },
@@ -62,27 +84,44 @@ fn parse_opts(args: Vec<String>) -> ThermiteOptions {
 
     if matches.opt_present("h") {
         print_usage(&program, opts);
-        process::exit(1);
+        process::exit(0);
     }
 
     let file_match = match matches.opt_str("f") {
         Some(x) => { x },
         None => {
-            println!("File is a required parameter.");
-            process::exit(1)
+            error_exit!(1, "File is a required parameter.");
         },
     };
 
-    let thread_match = opt_with_default!(matches.opt_str("t"), u8, 1,
+    let mode_match = match matches.opt_str("m") {
+        Some(x) => {
+            match x.as_ref() {
+                "sequential" => { IOMode::Sequential },
+                "random" => { IOMode::Random },
+                _ => {
+                    error_exit!(1, "I/O Mode must be sequential or random");
+                }
+            }
+        },
+        None => { IOMode::Random },
+    };
+
+    let thread_match = numeric_opt!(matches.opt_str("t"), u8, 1,
             "ERROR: Threads must be a numeric value between 1 and 255.");
-    let blocksize_match = opt_with_default!(matches.opt_str("b"), usize, 512,
+    let blocksize_match = numeric_opt!(matches.opt_str("b"), u64, 512,
             "ERROR: Blocksize must be a positive power of 2.");
-    let pagesize_match = opt_with_default!(matches.opt_str("p"), usize, 0,
+    let pagesize_match = numeric_opt!(matches.opt_str("p"), u64, 0,
             "ERROR: Pagesize must be a positive power of 2.");
 
     if (pagesize_match != 0) && (pagesize_match > blocksize_match) {
-        println!("ERROR: Pagesize, if supplied, must be smaller than blocksize.");
-        process::exit(1);
+        error_exit!(1, "ERROR: Pagesize, if supplied, must be smaller than blocksize.");
+    }
+    if (pagesize_match != 0) && (!is_power2(pagesize_match)) {
+        error_exit!(1, "ERROR: Pagesize must be a power of 2");
+    }
+    if !is_power2(blocksize_match) {
+        error_exit!(1, "ERROR: Blocksize must be a power of 2");
     }
 
     ThermiteOptions {
@@ -90,6 +129,50 @@ fn parse_opts(args: Vec<String>) -> ThermiteOptions {
         blocksize: blocksize_match,
         pagesize: pagesize_match,
         target: file_match,
+        mode: mode_match,
+    }
+}
+
+fn run_io(mut f: &fs::File, args: &ThermiteOptions) -> std::io::Result<()> {
+    let end = f.seek(SeekFrom::End(0)).unwrap();
+    let end_offset = end / args.blocksize;
+
+    let mut iterations = 0;
+    let mut data: Vec<u8> = random_bytes(args.blocksize as u32);
+
+    loop {
+        let random = rand::thread_rng().gen_range(0, end_offset);
+        let chosen_offset = args.blocksize * random;
+
+        try!(f.seek(SeekFrom::Start(chosen_offset)));
+        try!(f.write(&data[..]));
+
+        xor_scramble(&mut data, args.pagesize, iterations);
+        iterations += 1;
+    }
+}
+
+fn xor_scramble(data: &mut Vec<u8>, pagesize: u64, offset: u64) {
+    let blocksize = data.len() as u64;
+
+    if pagesize != 0 {
+        let num_pages = blocksize / pagesize;
+        let page_offsets: Vec<u64> =
+                (0..num_pages).map(|x| x * pagesize).collect();
+
+        for p_off in page_offsets {
+            let this = offset & pagesize-1;
+            let next = (offset + 1) & pagesize-1;
+            let this_offset = this + p_off;
+            let next_offset = next + p_off;
+
+            data[this_offset as usize] ^= data[next_offset as usize];
+        }
+    } else {
+        let this = offset & blocksize-1;
+        let next = (offset + 1) & blocksize-1;
+
+        data[this as usize] ^= data[next as usize];
     }
 }
 
@@ -105,4 +188,16 @@ fn main() {
     println!("Pagesize {}", thermite_args.pagesize);
     println!("Target {}", thermite_args.target);
 
+    let mut options = fs::OpenOptions::new();
+    options.read(true).write(true);
+
+    let path = &thermite_args.target;
+
+    let f = match options.open(path) {
+        Ok(file) => { file },
+        Err(_) => panic!("Could not open file {}", path),
+    };
+
+    // Drop the result from the IO as this should never terminate
+    let _ = run_io(&f, &thermite_args);
 }

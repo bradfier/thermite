@@ -6,3 +6,4 @@ authors = ["Richard Bradfield <richard.bradfield@hp.com>"]
 [dependencies]
 rand = "*"
 getopts = "*"
+num = "*"
