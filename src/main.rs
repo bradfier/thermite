@@ -38,6 +38,7 @@ struct ThermiteOptions {
 enum IOMode {
     Sequential,
     Random,
+    Random100,
 }
 
 fn is_power2<T: num::PrimInt>(x: T) -> bool {
@@ -89,7 +90,7 @@ fn parse_opts(args: Vec<String>) -> ThermiteOptions {
     let mut opts = Options::new();
 
     opts.optflag("h", "help", "print this help text");
-    opts.optopt("m", "mode", "I/O mode, 'sequential' or 'random'", "");
+    opts.optopt("m", "mode", "I/O mode, 'sequential' or 'random' or 'random100'", "");
     opts.optopt("t", "threads", "number of I/O threads", "");
     opts.optopt("b", "blocksize", "block size to write", "");
     opts.optopt("p", "pagesize", "dedupe page-size (16384 for 3PAR)", "");
@@ -117,8 +118,9 @@ fn parse_opts(args: Vec<String>) -> ThermiteOptions {
             match x.as_ref() {
                 "sequential" => { IOMode::Sequential },
                 "random" => { IOMode::Random },
+                "random100" => { IOMode::Random100 },
                 _ => {
-                    error_exit!(1, "I/O Mode must be sequential or random");
+                    error_exit!(1, "I/O Mode must be sequential or random or random100");
                 }
             }
         },
@@ -157,10 +159,33 @@ fn run_io(mut f: &fs::File, args: &ThermiteOptions) -> std::io::Result<()> {
 
     let mut iterations = 0;
     let mut data: Vec<u8> = random_bytes(args.blocksize as u32);
+    let mut block_offsets: Vec<u64> =
+        (0..end_offset).map(|x| x * args.blocksize).collect();
+
+    rand::thread_rng().shuffle(&mut block_offsets);
 
     loop {
-        let random = rand::thread_rng().gen_range(0, end_offset);
-        let chosen_offset = args.blocksize * random;
+
+        let chosen_offset;
+
+        match args.mode {
+            IOMode::Random => {
+                let random = rand::thread_rng().gen_range(0, end_offset);
+                chosen_offset = args.blocksize * random;
+            },
+            IOMode::Sequential => {
+                chosen_offset = args.blocksize * iterations;
+                if chosen_offset > end_offset {
+                    break;
+                }
+            },
+            IOMode::Random100 => {
+                chosen_offset = block_offsets[iterations as usize];
+                if iterations as usize == block_offsets.len() {
+                    break;
+                }
+            },
+        };
 
         try!(f.seek(SeekFrom::Start(chosen_offset)));
         try!(f.write(&data[..]));
@@ -168,6 +193,8 @@ fn run_io(mut f: &fs::File, args: &ThermiteOptions) -> std::io::Result<()> {
         xor_scramble(&mut data, args.pagesize, iterations);
         iterations += 1;
     }
+
+    Ok(())
 }
 
 fn xor_scramble(data: &mut Vec<u8>, pagesize: u64, offset: u64) {
@@ -198,7 +225,6 @@ fn main() {
 
     // Argparse
     let args: Vec<String> = env::args().collect();
-
     let thermite_args = parse_opts(args);
 
     println!("Threads {}", thermite_args.threads);
