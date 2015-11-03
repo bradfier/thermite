@@ -155,12 +155,12 @@ fn parse_opts(args: Vec<String>) -> ThermiteOptions {
 
 fn run_io(mut f: &fs::File, args: &ThermiteOptions) -> std::io::Result<()> {
     let end = f.seek(SeekFrom::End(0)).unwrap();
-    let end_offset = end / args.blocksize;
+    let end_block = end / args.blocksize;
 
     let mut iterations = 0;
     let mut data: Vec<u8> = random_bytes(args.blocksize as u32);
     let mut block_offsets: Vec<u64> =
-        (0..end_offset).map(|x| x * args.blocksize).collect();
+        (0..end_block).map(|x| x * args.blocksize).collect();
 
     rand::thread_rng().shuffle(&mut block_offsets);
 
@@ -170,20 +170,20 @@ fn run_io(mut f: &fs::File, args: &ThermiteOptions) -> std::io::Result<()> {
 
         match args.mode {
             IOMode::Random => {
-                let random = rand::thread_rng().gen_range(0, end_offset);
+                let random = rand::thread_rng().gen_range(0, end_block);
                 chosen_offset = args.blocksize * random;
             },
             IOMode::Sequential => {
                 chosen_offset = args.blocksize * iterations;
-                if chosen_offset > end_offset {
+                if chosen_offset > (end_block * args.blocksize) {
                     break;
                 }
             },
             IOMode::Random100 => {
-                chosen_offset = block_offsets[iterations as usize];
                 if iterations as usize == block_offsets.len() {
                     break;
                 }
+                chosen_offset = block_offsets[iterations as usize];
             },
         };
 
