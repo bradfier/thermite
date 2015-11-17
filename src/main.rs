@@ -1,17 +1,17 @@
 /*
  * Thermite - An I/O generation tool in Rust
  * Copyright (C) 2015 Richard Bradfield
- *                                                                         
+ *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
  * the Free Software Foundation, either version 3 of the License, or
  * (at your option) any later version.
- *                                                                         
+ *
  * This program is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
  * GNU General Public License for more details.
- *                                                                         
+ *
  * You should have received a copy of the GNU General Public License
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
@@ -28,7 +28,6 @@ use std::io::{Write,Seek,SeekFrom};
 use getopts::Options;
 
 struct ThermiteOptions {
-    threads: u8,
     blocksize: u64,
     pagesize: u64,
     target: String,
@@ -91,7 +90,6 @@ fn parse_opts(args: Vec<String>) -> ThermiteOptions {
 
     opts.optflag("h", "help", "print this help text");
     opts.optopt("m", "mode", "I/O mode, 'sequential' or 'random' or 'random100'", "");
-    opts.optopt("t", "threads", "number of I/O threads", "");
     opts.optopt("b", "blocksize", "block size to write", "");
     opts.optopt("p", "pagesize", "dedupe page-size (16384 for 3PAR)", "");
     opts.optopt("f", "file", "target file or block device", "/dev/sdX");
@@ -127,8 +125,6 @@ fn parse_opts(args: Vec<String>) -> ThermiteOptions {
         None => { IOMode::Random },
     };
 
-    let thread_match = numeric_opt!(matches.opt_str("t"), u8, 1,
-            "ERROR: Threads must be a numeric value between 1 and 255.");
     let blocksize_match = numeric_opt!(matches.opt_str("b"), u64, 512,
             "ERROR: Blocksize must be a positive power of 2.");
     let pagesize_match = numeric_opt!(matches.opt_str("p"), u64, 0,
@@ -145,7 +141,6 @@ fn parse_opts(args: Vec<String>) -> ThermiteOptions {
     }
 
     ThermiteOptions {
-        threads: thread_match,
         blocksize: blocksize_match,
         pagesize: pagesize_match,
         target: file_match,
@@ -227,7 +222,6 @@ fn main() {
     let args: Vec<String> = env::args().collect();
     let thermite_args = parse_opts(args);
 
-    println!("Threads {}", thermite_args.threads);
     println!("Blocksize {}", thermite_args.blocksize);
     println!("Pagesize {}", thermite_args.pagesize);
     println!("Target {}", thermite_args.target);
@@ -242,6 +236,6 @@ fn main() {
         Err(_) => panic!("Could not open file {}", path),
     };
 
-    // Drop the result from the IO as this should never terminate
+    // Drop the result from the IO as it's just an Ok unit 'Ok(())'
     let _ = run_io(&f, &thermite_args);
 }
