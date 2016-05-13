@@ -27,6 +27,8 @@ use rand::Rng;
 use std::io::{Write,Seek,SeekFrom};
 use getopts::Options;
 
+mod lcg;
+
 struct ThermiteOptions {
     blocksize: u64,
     pagesize: u64,
@@ -154,10 +156,10 @@ fn run_io(mut f: &fs::File, args: &ThermiteOptions) -> std::io::Result<()> {
 
     let mut iterations = 0;
     let mut data: Vec<u8> = random_bytes(args.blocksize as u32);
-    let mut block_offsets: Vec<u64> =
-        (0..end_block).map(|x| x * args.blocksize).collect();
 
-    rand::thread_rng().shuffle(&mut block_offsets);
+    let seed = rand::thread_rng().gen::<u64>();
+    let power2 = end_block.next_power_of_two();
+    let mut generator = lcg::LCG::new(seed, power2);
 
     loop {
 
@@ -175,10 +177,10 @@ fn run_io(mut f: &fs::File, args: &ThermiteOptions) -> std::io::Result<()> {
                 }
             },
             IOMode::Random100 => {
-                if iterations as usize == block_offsets.len() {
+                if iterations == end_block {
                     break;
                 }
-                chosen_offset = block_offsets[iterations as usize];
+                chosen_offset = generator.next().unwrap() * args.blocksize;
             },
         };
 
