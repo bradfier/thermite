@@ -180,7 +180,11 @@ fn run_io(mut f: &fs::File, args: &ThermiteOptions) -> std::io::Result<()> {
                 if iterations == end_block {
                     break;
                 }
-                chosen_offset = generator.next().unwrap() * args.blocksize;
+                let mut random = generator.next().unwrap();
+                while random >= end_block {
+                    random = generator.next().unwrap();
+                }
+                chosen_offset = random * args.blocksize;
             },
         };
 
