@@ -157,7 +157,7 @@ fn run_io(mut f: &fs::File, args: &ThermiteOptions) -> std::io::Result<()> {
     let mut iterations = 0;
     let mut data: Vec<u8> = random_bytes(args.blocksize as u32);
 
-    let seed = rand::thread_rng().gen::<u64>();
+    let seed = rand::thread_rng().gen_range::<u64>(0, end_block);
     let power2 = end_block.next_power_of_two();
     let mut generator = lcg::LCG::new(seed, power2);
 

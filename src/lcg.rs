@@ -19,7 +19,8 @@ impl Iterator for LCG {
     fn next(&mut self) -> Option<u64> {
         let this_iter = self.curr;
         
-        let next = mod_power2((self.a * self.curr + self.c), self.m);
+        let v = self.a * self.curr + self.c;
+        let next = mod_power2(v, self.m);
         self.curr = next;
 
         Some(this_iter)
