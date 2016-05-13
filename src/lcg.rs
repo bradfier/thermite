@@ -44,3 +44,27 @@ fn mod_power2<T: PrimInt+One>(n: T, m: T) -> T {
         n % m
     }
 }
+
+
+// Tests
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::collections::BTreeSet;
+
+    #[test]
+    fn test_period() {
+        let seed = 1;
+        let modulus = 2u64.pow(16);
+        let generator = LCG::new(seed, modulus);
+
+        let set: BTreeSet<u64> = generator.take(modulus as usize).collect();
+
+        for n in 0..modulus {
+            assert_eq!(set.contains(&n), true);
+            set.remove(&n);
+
+        }
+
+    }
+}
