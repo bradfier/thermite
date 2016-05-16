@@ -59,7 +59,7 @@ mod tests {
         let modulus = 2u64.pow(16);
         let generator = LCG::new(seed, modulus);
 
-        let set: BTreeSet<u64> = generator.take(modulus as usize).collect();
+        let mut set: BTreeSet<u64> = generator.take(modulus as usize).collect();
 
         for n in 0..modulus {
             assert_eq!(set.contains(&n), true);
