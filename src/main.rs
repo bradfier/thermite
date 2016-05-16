@@ -42,12 +42,6 @@ enum IOMode {
     Random100,
 }
 
-fn is_power2<T: num::PrimInt>(x: T) -> bool {
-    let _0 = T::zero();
-    let _1 = T::one();
-    (x & x-_1) == _0
-}
-
 fn random_bytes(n: u32) -> Vec<u8> {
     (0..n).map(|_| rand::random::<u8>()).collect()
 }
@@ -135,10 +129,10 @@ fn parse_opts(args: Vec<String>) -> ThermiteOptions {
     if (pagesize_match != 0) && (pagesize_match > blocksize_match) {
         error_exit!(1, "ERROR: Pagesize, if supplied, must be smaller than blocksize.");
     }
-    if (pagesize_match != 0) && (!is_power2(pagesize_match)) {
+    if (pagesize_match != 0) && (!pagesize_match.is_power_of_two()) {
         error_exit!(1, "ERROR: Pagesize must be a power of 2");
     }
-    if !is_power2(blocksize_match) {
+    if !blocksize_match.is_power_of_two() {
         error_exit!(1, "ERROR: Blocksize must be a power of 2");
     }
 
@@ -207,16 +201,16 @@ fn xor_scramble(data: &mut Vec<u8>, pagesize: u64, offset: u64) {
                 (0..num_pages).map(|x| x * pagesize).collect();
 
         for p_off in page_offsets {
-            let this = offset & pagesize-1;
-            let next = (offset + 1) & pagesize-1;
+            let this = offset & (pagesize - 1);
+            let next = (offset + 1) & (pagesize - 1);
             let this_offset = this + p_off;
             let next_offset = next + p_off;
 
             data[this_offset as usize] ^= data[next_offset as usize];
         }
     } else {
-        let this = offset & blocksize-1;
-        let next = (offset + 1) & blocksize-1;
+        let this = offset & (blocksize - 1);
+        let next = (offset + 1) & (blocksize - 1);
 
         data[this as usize] ^= data[next as usize];
     }
