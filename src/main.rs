@@ -34,10 +34,14 @@ struct ThermiteOptions {
     pagesize: u64,
     target: String,
     mode: IOMode,
+    startblock: u64,
+    endblock: u64
 }
 
+#[derive(PartialEq)]
 enum IOMode {
     Sequential,
+    SequentialReverse,
     Random,
     Random100,
 }
@@ -85,7 +89,9 @@ fn parse_opts(args: Vec<String>) -> ThermiteOptions {
     let mut opts = Options::new();
 
     opts.optflag("h", "help", "print this help text");
-    opts.optopt("m", "mode", "I/O mode, 'sequential' or 'random' or 'random100'", "");
+    opts.optopt("m", "mode", "I/O mode, 'sequential' or 'sequentialreverse'  or 'random' or 'random100'", "");
+    opts.optopt("s", "startblock", "the starting block given the specified blocksize", "");
+    opts.optopt("e", "endblock", "the ending block given the specified blocksize", "");
     opts.optopt("b", "blocksize", "block size to write", "");
     opts.optopt("p", "pagesize", "dedupe page-size (16384 for 3PAR)", "");
     opts.optopt("f", "file", "target file or block device", "/dev/sdX");
@@ -110,7 +116,8 @@ fn parse_opts(args: Vec<String>) -> ThermiteOptions {
     let mode_match = match matches.opt_str("m") {
         Some(x) => {
             match x.as_ref() {
-                "sequential" => { IOMode::Sequential },
+                "sequential" => { IOMode::Sequential }
+		"sequentialreverse" => { IOMode::SequentialReverse },
                 "random" => { IOMode::Random },
                 "random100" => { IOMode::Random100 },
                 _ => {
@@ -125,6 +132,10 @@ fn parse_opts(args: Vec<String>) -> ThermiteOptions {
             "ERROR: Blocksize must be a positive power of 2.");
     let pagesize_match = numeric_opt!(matches.opt_str("p"), u64, 0,
             "ERROR: Pagesize must be a positive power of 2.");
+    let startblock_match = numeric_opt!(matches.opt_str("s"), u64, 0, 
+            "ERROR: startblock must be a number.");
+    let endblock_match = numeric_opt!(matches.opt_str("e"), u64, 0,
+            "ERROR: endblock must be a number.");
 
     if (pagesize_match != 0) && (pagesize_match > blocksize_match) {
         error_exit!(1, "ERROR: Pagesize, if supplied, must be smaller than blocksize.");
@@ -135,23 +146,40 @@ fn parse_opts(args: Vec<String>) -> ThermiteOptions {
     if !blocksize_match.is_power_of_two() {
         error_exit!(1, "ERROR: Blocksize must be a power of 2");
     }
+    if (endblock_match != 0) && (endblock_match < startblock_match){
+        error_exit!(1, "ERROR: Endblock must be higher than startblock");
+    }
+
 
     ThermiteOptions {
         blocksize: blocksize_match,
         pagesize: pagesize_match,
         target: file_match,
         mode: mode_match,
+	startblock: startblock_match,
+	endblock: endblock_match
     }
 }
 
 fn run_io(mut f: &fs::File, args: &ThermiteOptions) -> std::io::Result<()> {
     let end = f.seek(SeekFrom::End(0)).unwrap();
-    let end_block = end / args.blocksize;
+    let mut end_block = end / args.blocksize;
+    if args.endblock != 0{
+        end_block = args.endblock;
+    }
+    let mut start_block = 0;
+    if args.startblock != 0{
+        start_block = args.startblock;
+    }
+
+    println!("File length in blocks {}", end / args.blocksize);
+    println!("Start_Block {}", start_block);
+    println!("End_Block {}", end_block);
 
     let mut iterations = 0;
     let mut data: Vec<u8> = random_bytes(args.blocksize as u32);
 
-    let seed = rand::thread_rng().gen_range::<u64>(0, end_block);
+    let seed = rand::thread_rng().gen_range::<u64>(start_block, end_block);
     let power2 = end_block.next_power_of_two();
     let mut generator = lcg::LCG::new(seed, power2);
 
@@ -161,15 +189,21 @@ fn run_io(mut f: &fs::File, args: &ThermiteOptions) -> std::io::Result<()> {
 
         match args.mode {
             IOMode::Random => {
-                let random = rand::thread_rng().gen_range(0, end_block);
+                let random = rand::thread_rng().gen_range(start_block, end_block);
                 chosen_offset = args.blocksize * random;
             },
             IOMode::Sequential => {
-                chosen_offset = args.blocksize * iterations;
+                chosen_offset = (args.blocksize * iterations) + (start_block * args.blocksize);
                 if chosen_offset > (end_block * args.blocksize) {
                     break;
                 }
             },
+	    IOMode::SequentialReverse => {	    
+	        chosen_offset = (args.blocksize * (end_block - 1)) - (args.blocksize * iterations);
+	        if chosen_offset <= start_block * args.blocksize {
+		    break;
+		}
+	    },
             IOMode::Random100 => {
                 if iterations == end_block {
                     break;
