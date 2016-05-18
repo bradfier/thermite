@@ -116,8 +116,8 @@ fn parse_opts(args: Vec<String>) -> ThermiteOptions {
     let mode_match = match matches.opt_str("m") {
         Some(x) => {
             match x.as_ref() {
-                "sequential" => { IOMode::Sequential }
-		"sequentialreverse" => { IOMode::SequentialReverse },
+                "sequential" => { IOMode::Sequential },
+                "sequentialreverse" => { IOMode::SequentialReverse },
                 "random" => { IOMode::Random },
                 "random100" => { IOMode::Random100 },
                 _ => {
@@ -132,7 +132,7 @@ fn parse_opts(args: Vec<String>) -> ThermiteOptions {
             "ERROR: Blocksize must be a positive power of 2.");
     let pagesize_match = numeric_opt!(matches.opt_str("p"), u64, 0,
             "ERROR: Pagesize must be a positive power of 2.");
-    let startblock_match = numeric_opt!(matches.opt_str("s"), u64, 0, 
+    let startblock_match = numeric_opt!(matches.opt_str("s"), u64, 0,
             "ERROR: startblock must be a number.");
     let endblock_match = numeric_opt!(matches.opt_str("e"), u64, 0,
             "ERROR: endblock must be a number.");
@@ -156,8 +156,8 @@ fn parse_opts(args: Vec<String>) -> ThermiteOptions {
         pagesize: pagesize_match,
         target: file_match,
         mode: mode_match,
-	startblock: startblock_match,
-	endblock: endblock_match
+        startblock: startblock_match,
+        endblock: endblock_match
     }
 }
 
@@ -198,12 +198,12 @@ fn run_io(mut f: &fs::File, args: &ThermiteOptions) -> std::io::Result<()> {
                     break;
                 }
             },
-	    IOMode::SequentialReverse => {	    
-	        chosen_offset = (args.blocksize * (end_block - 1)) - (args.blocksize * iterations);
-	        if chosen_offset <= start_block * args.blocksize {
-		    break;
-		}
-	    },
+            IOMode::SequentialReverse => {
+            chosen_offset = (args.blocksize * (end_block - 1)) - (args.blocksize * iterations);
+            if chosen_offset <= start_block * args.blocksize {
+                break;
+            }
+        },
             IOMode::Random100 => {
                 if iterations == end_block {
                     break;
