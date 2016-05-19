@@ -7,9 +7,30 @@ stable:
     script:
         - cargo build
         - cargo test
+    except:
+        - tags
 
 nightly:
     image: scorpil/rust:nightly
     script:
         - cargo build
         - cargo test
+    artifacts:
+        name: "thermite-${CI_BUILD_REF_NAME}-${CI_BUILD_REF}"
+        paths:
+            - target/debug/thermite
+    except:
+        - tags
+
+release:
+    image: scorpil/rust:stable
+    script:
+        - cargo test
+        - cargo build --release
+    artifacts:
+        name: "thermite-${CI_BUILD_TAG}-${CI_BUILD_NAME}"
+        paths:
+            - target/release/thermite
+            - README.md
+    only:
+        - tags
