@@ -1,20 +1,19 @@
-/*
- * Thermite - An I/O generation tool in Rust
- * Copyright (C) 2015 Richard Bradfield
- *
- * This program is free software: you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation, either version 3 of the License, or
- * (at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
- *
- * You should have received a copy of the GNU General Public License
- * along with this program.  If not, see <http://www.gnu.org/licenses/>.
- */
+// Thermite - An I/O generation tool in Rust
+// Copyright (C) 2015 Richard Bradfield
+//
+// This program is free software: you can redistribute it and/or modify
+// it under the terms of the GNU General Public License as published by
+// the Free Software Foundation, either version 3 of the License, or
+// (at your option) any later version.
+//
+// This program is distributed in the hope that it will be useful,
+// but WITHOUT ANY WARRANTY; without even the implied warranty of
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+// GNU General Public License for more details.
+//
+// You should have received a copy of the GNU General Public License
+// along with this program.  If not, see <http://www.gnu.org/licenses/>.
+//
 
 extern crate getopts;
 extern crate rand;
@@ -24,7 +23,7 @@ use std::env;
 use std::process;
 use std::fs;
 use rand::Rng;
-use std::io::{Write,Seek,SeekFrom};
+use std::io::{Write, Seek, SeekFrom};
 use getopts::Options;
 
 mod lcg;
@@ -37,7 +36,7 @@ struct ThermiteOptions {
     startblock: u64,
     endblock: u64,
     data: DataType,
-    interval: u64
+    interval: u64,
 }
 
 #[derive(PartialEq)]
@@ -51,7 +50,7 @@ enum IOMode {
 #[derive(PartialEq)]
 enum DataType {
     Random,
-    Zero
+    Zero,
 }
 
 fn random_bytes(n: usize) -> Vec<u8> {
@@ -102,18 +101,30 @@ fn parse_opts(args: Vec<String>) -> ThermiteOptions {
     let mut opts = Options::new();
 
     opts.optflag("h", "help", "print this help text");
-    opts.optopt("m", "mode", "I/O mode, 'sequential' or 'sequentialreverse'  or 'random' or 'random100'", "");
+    opts.optopt("m",
+                "mode",
+                "I/O mode, 'sequential' or 'sequentialreverse'  or 'random' or 'random100'",
+                "");
     opts.optopt("d", "data", "datatype, 'random' or 'zero'", "");
-    opts.optopt("s", "startblock", "the starting block given the specified blocksize", "");
-    opts.optopt("e", "endblock", "the ending block given the specified blocksize", "");
+    opts.optopt("s",
+                "startblock",
+                "the starting block given the specified blocksize",
+                "");
+    opts.optopt("e",
+                "endblock",
+                "the ending block given the specified blocksize",
+                "");
     opts.optopt("b", "blocksize", "block size to write", "");
     opts.optopt("p", "pagesize", "dedupe page-size (16384 for 3PAR)", "");
-    opts.optopt("i", "interval", "number of blocks to skip between write ops", "");
+    opts.optopt("i",
+                "interval",
+                "number of blocks to skip between write ops",
+                "");
     opts.optopt("f", "file", "target file or block device", "/dev/sdX");
 
     let matches = match opts.parse(&args[1..]) {
-        Ok(m) => { m },
-        Err(f) => { panic!(f.to_string()) }
+        Ok(m) => m,
+        Err(f) => panic!(f.to_string()),
     };
 
     if matches.opt_present("h") {
@@ -122,51 +133,64 @@ fn parse_opts(args: Vec<String>) -> ThermiteOptions {
     }
 
     let file_match = match matches.opt_str("f") {
-        Some(x) => { x },
+        Some(x) => x,
         None => {
             error_exit!(1, "File is a required parameter.");
-        },
+        }
     };
 
     let mode_match = match matches.opt_str("m") {
         Some(x) => {
             match x.as_ref() {
-                "sequential" => { IOMode::Sequential },
-                "sequentialreverse" => { IOMode::SequentialReverse },
-                "random" => { IOMode::Random },
-                "random100" => { IOMode::Random100 },
+                "sequential" => IOMode::Sequential,
+                "sequentialreverse" => IOMode::SequentialReverse,
+                "random" => IOMode::Random,
+                "random100" => IOMode::Random100,
                 _ => {
                     error_exit!(1, "I/O Mode must be sequential or random or random100");
                 }
             }
-        },
-        None => { IOMode::Random },
+        }
+        None => IOMode::Random,
     };
 
     let data_match = match matches.opt_str("d") {
         Some(y) => {
-            match y.as_ref(){
-                "random" => { DataType::Random  },
-                "zero" => { DataType::Zero  },
-                _ => {error_exit!(1, "Data type must be random or zero");}
+            match y.as_ref() {
+                "random" => DataType::Random,
+                "zero" => DataType::Zero,
+                _ => {
+                    error_exit!(1, "Data type must be random or zero");
+                }
             }
-        },
-        None => { DataType::Random  }
+        }
+        None => DataType::Random,
     };
 
-    let blocksize_match = numeric_opt!(matches.opt_str("b"), u64, 512,
-            "ERROR: Blocksize must be a positive power of 2.");
-    let pagesize_match = numeric_opt!(matches.opt_str("p"), u64, 0,
-            "ERROR: Pagesize must be a positive power of 2.");
-    let startblock_match = numeric_opt!(matches.opt_str("s"), u64, 0,
-            "ERROR: startblock must be a number.");
-    let endblock_match = numeric_opt!(matches.opt_str("e"), u64, 0,
-            "ERROR: endblock must be a number.");
-    let interval_match = numeric_opt!(matches.opt_str("i"), u64, 0,
-            "ERROR: block skip interval must be number.");
+    let blocksize_match = numeric_opt!(matches.opt_str("b"),
+                                       u64,
+                                       512,
+                                       "ERROR: Blocksize must be a positive power of 2.");
+    let pagesize_match = numeric_opt!(matches.opt_str("p"),
+                                      u64,
+                                      0,
+                                      "ERROR: Pagesize must be a positive power of 2.");
+    let startblock_match = numeric_opt!(matches.opt_str("s"),
+                                        u64,
+                                        0,
+                                        "ERROR: startblock must be a number.");
+    let endblock_match = numeric_opt!(matches.opt_str("e"),
+                                      u64,
+                                      0,
+                                      "ERROR: endblock must be a number.");
+    let interval_match = numeric_opt!(matches.opt_str("i"),
+                                      u64,
+                                      0,
+                                      "ERROR: block skip interval must be number.");
 
     if (pagesize_match != 0) && (pagesize_match > blocksize_match) {
-        error_exit!(1, "ERROR: Pagesize, if supplied, must be smaller than blocksize.");
+        error_exit!(1,
+                    "ERROR: Pagesize, if supplied, must be smaller than blocksize.");
     }
     if (pagesize_match != 0) && (!pagesize_match.is_power_of_two()) {
         error_exit!(1, "ERROR: Pagesize must be a power of 2");
@@ -174,7 +198,7 @@ fn parse_opts(args: Vec<String>) -> ThermiteOptions {
     if !blocksize_match.is_power_of_two() {
         error_exit!(1, "ERROR: Blocksize must be a power of 2");
     }
-    if (endblock_match != 0) && (endblock_match < startblock_match){
+    if (endblock_match != 0) && (endblock_match < startblock_match) {
         error_exit!(1, "ERROR: Endblock must be higher than startblock");
     }
 
@@ -187,18 +211,18 @@ fn parse_opts(args: Vec<String>) -> ThermiteOptions {
         startblock: startblock_match,
         endblock: endblock_match,
         data: data_match,
-        interval: interval_match
+        interval: interval_match,
     }
 }
 
 fn run_io(mut f: &fs::File, args: &ThermiteOptions) -> std::io::Result<()> {
     let end = f.seek(SeekFrom::End(0)).unwrap();
     let mut end_block = end / args.blocksize;
-    if args.endblock != 0{
+    if args.endblock != 0 {
         end_block = args.endblock;
     }
     let mut start_block = 0;
-    if args.startblock != 0{
+    if args.startblock != 0 {
         start_block = args.startblock;
     }
 
@@ -212,12 +236,16 @@ fn run_io(mut f: &fs::File, args: &ThermiteOptions) -> std::io::Result<()> {
     let mut iterations = 0;
     let mut data: Vec<u8>;
     match args.data {
-        DataType::Random => {data = random_bytes(args.blocksize as usize); },
-        DataType::Zero => { data = zero(args.blocksize as usize); }
+        DataType::Random => {
+            data = random_bytes(args.blocksize as usize);
+        }
+        DataType::Zero => {
+            data = zero(args.blocksize as usize);
+        }
     };
 
     let seed = rand::thread_rng().gen_range::<u64>(start_block, end_block);
-    let power2 = (end_block-start_block).next_power_of_two();
+    let power2 = (end_block - start_block).next_power_of_two();
     let mut generator = lcg::LCG::new(seed, power2);
 
     loop {
@@ -228,19 +256,19 @@ fn run_io(mut f: &fs::File, args: &ThermiteOptions) -> std::io::Result<()> {
             IOMode::Random => {
                 let random = rand::thread_rng().gen_range(start_block, end_block);
                 chosen_offset = args.blocksize * random;
-            },
+            }
             IOMode::Sequential => {
                 chosen_offset = (args.blocksize * iterations) + (start_block * args.blocksize);
                 if chosen_offset > (end_block * args.blocksize) {
                     break;
                 }
-            },
+            }
             IOMode::SequentialReverse => {
                 chosen_offset = (args.blocksize * (end_block - 1)) - (args.blocksize * iterations);
                 if chosen_offset <= start_block * args.blocksize {
                     break;
-                } 
-            },
+                }
+            }
             IOMode::Random100 => {
                 if iterations == end_block {
                     break;
@@ -250,7 +278,7 @@ fn run_io(mut f: &fs::File, args: &ThermiteOptions) -> std::io::Result<()> {
                     random = generator.next().unwrap();
                 }
                 chosen_offset = (random * args.blocksize) + (start_block * args.blocksize);
-            },
+            }
         };
 
         try!(f.seek(SeekFrom::Start(chosen_offset)));
@@ -268,8 +296,7 @@ fn xor_scramble(data: &mut Vec<u8>, pagesize: u64, offset: u64) {
 
     if pagesize != 0 {
         let num_pages = blocksize / pagesize;
-        let page_offsets: Vec<u64> =
-                (0..num_pages).map(|x| x * pagesize).collect();
+        let page_offsets: Vec<u64> = (0..num_pages).map(|x| x * pagesize).collect();
 
         for p_off in page_offsets {
             let this = offset & (pagesize - 1);
@@ -303,7 +330,7 @@ fn main() {
     let path = &thermite_args.target;
 
     let f = match options.open(path) {
-        Ok(file) => { file },
+        Ok(file) => file,
         Err(_) => panic!("Could not open file {}", path),
     };
 
