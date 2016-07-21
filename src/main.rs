@@ -35,7 +35,9 @@ struct ThermiteOptions {
     target: String,
     mode: IOMode,
     startblock: u64,
-    endblock: u64
+    endblock: u64,
+    data: DataType,
+    interval: u64
 }
 
 #[derive(PartialEq)]
@@ -46,8 +48,19 @@ enum IOMode {
     Random100,
 }
 
-fn random_bytes(n: u32) -> Vec<u8> {
+#[derive(PartialEq)]
+enum DataType {
+    Random,
+    Zero
+}
+
+fn random_bytes(n: usize) -> Vec<u8> {
     (0..n).map(|_| rand::random::<u8>()).collect()
+}
+
+#[inline(always)]
+fn zero(n: usize) -> Vec<u8> {
+    vec![0; n]
 }
 
 fn print_usage(program: &str, opts: Options) {
@@ -90,10 +103,12 @@ fn parse_opts(args: Vec<String>) -> ThermiteOptions {
 
     opts.optflag("h", "help", "print this help text");
     opts.optopt("m", "mode", "I/O mode, 'sequential' or 'sequentialreverse'  or 'random' or 'random100'", "");
+    opts.optopt("d", "data", "datatype, 'random' or 'zero'", "");
     opts.optopt("s", "startblock", "the starting block given the specified blocksize", "");
     opts.optopt("e", "endblock", "the ending block given the specified blocksize", "");
     opts.optopt("b", "blocksize", "block size to write", "");
     opts.optopt("p", "pagesize", "dedupe page-size (16384 for 3PAR)", "");
+    opts.optopt("i", "interval", "number of blocks to skip between write ops", "");
     opts.optopt("f", "file", "target file or block device", "/dev/sdX");
 
     let matches = match opts.parse(&args[1..]) {
@@ -128,6 +143,17 @@ fn parse_opts(args: Vec<String>) -> ThermiteOptions {
         None => { IOMode::Random },
     };
 
+    let data_match = match matches.opt_str("d") {
+        Some(y) => {
+            match y.as_ref(){
+                "random" => { DataType::Random  },
+                "zero" => { DataType::Zero  },
+                _ => {error_exit!(1, "Data type must be random or zero");}
+            }
+        },
+        None => { DataType::Random  }
+    };
+
     let blocksize_match = numeric_opt!(matches.opt_str("b"), u64, 512,
             "ERROR: Blocksize must be a positive power of 2.");
     let pagesize_match = numeric_opt!(matches.opt_str("p"), u64, 0,
@@ -136,6 +162,8 @@ fn parse_opts(args: Vec<String>) -> ThermiteOptions {
             "ERROR: startblock must be a number.");
     let endblock_match = numeric_opt!(matches.opt_str("e"), u64, 0,
             "ERROR: endblock must be a number.");
+    let interval_match = numeric_opt!(matches.opt_str("i"), u64, 0,
+            "ERROR: block skip interval must be number.");
 
     if (pagesize_match != 0) && (pagesize_match > blocksize_match) {
         error_exit!(1, "ERROR: Pagesize, if supplied, must be smaller than blocksize.");
@@ -157,7 +185,9 @@ fn parse_opts(args: Vec<String>) -> ThermiteOptions {
         target: file_match,
         mode: mode_match,
         startblock: startblock_match,
-        endblock: endblock_match
+        endblock: endblock_match,
+        data: data_match,
+        interval: interval_match
     }
 }
 
@@ -172,15 +202,22 @@ fn run_io(mut f: &fs::File, args: &ThermiteOptions) -> std::io::Result<()> {
         start_block = args.startblock;
     }
 
+    let blockskip = args.interval;
+
     println!("File length in blocks {}", end / args.blocksize);
     println!("Start_Block {}", start_block);
     println!("End_Block {}", end_block);
+    println!("Block Skip Interval: {}", blockskip);
 
     let mut iterations = 0;
-    let mut data: Vec<u8> = random_bytes(args.blocksize as u32);
+    let mut data: Vec<u8>;
+    match args.data {
+        DataType::Random => {data = random_bytes(args.blocksize as usize); },
+        DataType::Zero => { data = zero(args.blocksize as usize); }
+    };
 
     let seed = rand::thread_rng().gen_range::<u64>(start_block, end_block);
-    let power2 = end_block.next_power_of_two();
+    let power2 = (end_block-start_block).next_power_of_two();
     let mut generator = lcg::LCG::new(seed, power2);
 
     loop {
@@ -199,11 +236,11 @@ fn run_io(mut f: &fs::File, args: &ThermiteOptions) -> std::io::Result<()> {
                 }
             },
             IOMode::SequentialReverse => {
-            chosen_offset = (args.blocksize * (end_block - 1)) - (args.blocksize * iterations);
-            if chosen_offset <= start_block * args.blocksize {
-                break;
-            }
-        },
+                chosen_offset = (args.blocksize * (end_block - 1)) - (args.blocksize * iterations);
+                if chosen_offset <= start_block * args.blocksize {
+                    break;
+                } 
+            },
             IOMode::Random100 => {
                 if iterations == end_block {
                     break;
@@ -212,7 +249,7 @@ fn run_io(mut f: &fs::File, args: &ThermiteOptions) -> std::io::Result<()> {
                 while random >= end_block {
                     random = generator.next().unwrap();
                 }
-                chosen_offset = random * args.blocksize;
+                chosen_offset = (random * args.blocksize) + (start_block * args.blocksize);
             },
         };
 
@@ -220,7 +257,7 @@ fn run_io(mut f: &fs::File, args: &ThermiteOptions) -> std::io::Result<()> {
         try!(f.write(&data[..]));
 
         xor_scramble(&mut data, args.pagesize, iterations);
-        iterations += 1;
+        iterations += 1 + blockskip;
     }
 
     Ok(())
