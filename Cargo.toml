@@ -1,7 +1,8 @@
 [package]
 name = "thermite"
-version = "0.1.0"
-authors = ["Richard Bradfield <richard.bradfield@hpe.com>"]
+version = "0.2.0"
+authors = ["Richard Bradfield <richard.bradfield@hpe.com>",
+           "Steven Williamson <steven.williamson@hpe.com>"]
 license = "GPLv3"
 repository = "https://github.com/bradfirj/thermite"
 description = """
