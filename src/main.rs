@@ -25,13 +25,14 @@ use std::fs;
 use rand::Rng;
 use std::io::{Write, Seek, SeekFrom};
 use getopts::Options;
+use std::ops::Index;
 
 mod lcg;
 
 struct ThermiteOptions {
     blocksize: u64,
     pagesize: u64,
-    target: String,
+    target: Vec<String>,
     mode: IOMode,
     startblock: u64,
     endblock: u64,
@@ -120,7 +121,7 @@ fn parse_opts(args: Vec<String>) -> ThermiteOptions {
                 "interval",
                 "number of blocks to skip between write ops",
                 "");
-    opts.optopt("f", "file", "target file or block device", "/dev/sdX");
+    opts.optmulti("f", "file", "target file or block device", "/dev/sdX");
 
     let matches = match opts.parse(&args[1..]) {
         Ok(m) => m,
@@ -132,11 +133,11 @@ fn parse_opts(args: Vec<String>) -> ThermiteOptions {
         process::exit(0);
     }
 
-    let file_match = match matches.opt_str("f") {
-        Some(x) => x,
-        None => {
+    let files_match = match matches.opt_strs("f").len() {
+        0 => {
             error_exit!(1, "File is a required parameter.");
         }
+        _ => matches.opt_strs("f"),
     };
 
     let mode_match = match matches.opt_str("m") {
@@ -206,7 +207,7 @@ fn parse_opts(args: Vec<String>) -> ThermiteOptions {
     ThermiteOptions {
         blocksize: blocksize_match,
         pagesize: pagesize_match,
-        target: file_match,
+        target: files_match,
         mode: mode_match,
         startblock: startblock_match,
         endblock: endblock_match,
@@ -215,8 +216,17 @@ fn parse_opts(args: Vec<String>) -> ThermiteOptions {
     }
 }
 
-fn run_io(mut f: &fs::File, args: &ThermiteOptions) -> std::io::Result<()> {
-    let end = f.seek(SeekFrom::End(0)).unwrap();
+fn run_io(fds: &[fs::File], args: &ThermiteOptions) -> std::io::Result<()> {
+    // Check that all the supplied file descriptors are trivially the same length
+    let length = fds.index(0).seek(SeekFrom::End(0)).unwrap();
+    for mut fd in fds {
+        if fd.seek(SeekFrom::End(0)).unwrap() != length {
+            error_exit!(1, "Supplied target files are different sizes!");
+        }
+    }
+
+
+    let end = fds.index(0).seek(SeekFrom::End(0)).unwrap();
     let mut end_block = end / args.blocksize;
     if args.endblock != 0 {
         end_block = args.endblock;
@@ -281,8 +291,10 @@ fn run_io(mut f: &fs::File, args: &ThermiteOptions) -> std::io::Result<()> {
             }
         };
 
-        try!(f.seek(SeekFrom::Start(chosen_offset)));
-        try!(f.write(&data[..]));
+        for mut fd in fds {
+            try!(fd.seek(SeekFrom::Start(chosen_offset)));
+            try!(fd.write(&data[..]));
+        }
 
         xor_scramble(&mut data, args.pagesize, iterations);
         iterations += 1 + blockskip;
@@ -322,18 +334,24 @@ fn main() {
 
     println!("Blocksize {}", thermite_args.blocksize);
     println!("Pagesize {}", thermite_args.pagesize);
-    println!("Target {}", thermite_args.target);
+    print!("Targets ");
+    for t in &thermite_args.target {
+        print!("{} ", t);
+    }
+    println!("");
 
     let mut options = fs::OpenOptions::new();
     options.read(true).write(true);
 
-    let path = &thermite_args.target;
-
-    let f = match options.open(path) {
-        Ok(file) => file,
-        Err(_) => panic!("Could not open file {}", path),
-    };
+    let fds: Vec<std::fs::File> = thermite_args.target
+        .as_slice()
+        .into_iter()
+        .map(|f| match options.open(f) {
+            Ok(file) => file,
+            Err(_) => panic!("Could not open file {}", f),
+        })
+        .collect();
 
     // Drop the result from the IO as it's just an Ok unit 'Ok(())'
-    let _ = run_io(&f, &thermite_args);
+    let _ = run_io(&fds, &thermite_args);
 }
