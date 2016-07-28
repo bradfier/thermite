@@ -24,10 +24,14 @@ use std::process;
 use std::fs;
 use rand::Rng;
 use std::io::{Write, Seek, SeekFrom};
+use std::time::Instant;
+use std::thread;
+use std::sync::{Arc, Mutex};
 use getopts::Options;
 use std::ops::Index;
 
 mod lcg;
+mod watchdog;
 
 struct ThermiteOptions {
     blocksize: u64,
@@ -258,6 +262,13 @@ fn run_io(fds: &[fs::File], args: &ThermiteOptions) -> std::io::Result<()> {
     let power2 = (end_block - start_block).next_power_of_two();
     let mut generator = lcg::LCG::new(seed, power2);
 
+    // Watchdog shared memory
+    let last_io = Arc::new(Mutex::new(Instant::now()));
+    let shared = last_io.clone();
+    thread::spawn(move || {
+        watchdog::watch(shared.clone(), 2u64, 3u64);
+    });
+
     loop {
 
         let chosen_offset;
@@ -294,6 +305,8 @@ fn run_io(fds: &[fs::File], args: &ThermiteOptions) -> std::io::Result<()> {
         for mut fd in fds {
             try!(fd.seek(SeekFrom::Start(chosen_offset)));
             try!(fd.write(&data[..]));
+            let mut last_io_guard = last_io.lock().unwrap();
+            *last_io_guard = Instant::now();
         }
 
         xor_scramble(&mut data, args.pagesize, iterations);
