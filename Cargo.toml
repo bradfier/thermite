@@ -13,3 +13,5 @@ Thermite, a random I/O generation tool, written in Rust.
 rand = "*"
 getopts = "*"
 num = "*"
+log = "0.3"
+time = "*"
