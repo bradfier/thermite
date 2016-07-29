@@ -1,6 +1,6 @@
 [package]
 name = "thermite"
-version = "0.2.0"
+version = "0.3.0"
 authors = ["Richard Bradfield <richard.bradfield@hpe.com>",
            "Steven Williamson <steven.williamson@hpe.com>"]
 license = "GPLv3"
