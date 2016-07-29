@@ -18,6 +18,8 @@
 extern crate getopts;
 extern crate rand;
 extern crate num;
+#[macro_use]
+extern crate log;
 
 use std::env;
 use std::process;
@@ -32,6 +34,7 @@ use std::ops::Index;
 
 mod lcg;
 mod watchdog;
+mod logger;
 
 struct ThermiteOptions {
     blocksize: u64,
@@ -242,10 +245,10 @@ fn run_io(fds: &[fs::File], args: &ThermiteOptions) -> std::io::Result<()> {
 
     let blockskip = args.interval;
 
-    println!("File length in blocks {}", end / args.blocksize);
-    println!("Start_Block {}", start_block);
-    println!("End_Block {}", end_block);
-    println!("Block Skip Interval: {}", blockskip);
+    info!("File length in blocks {}", end / args.blocksize);
+    info!("Start_Block {}", start_block);
+    info!("End_Block {}", end_block);
+    info!("Block Skip Interval: {}", blockskip);
 
     let mut iterations = 0;
     let mut data: Vec<u8>;
@@ -340,19 +343,19 @@ fn xor_scramble(data: &mut Vec<u8>, pagesize: u64, offset: u64) {
 }
 
 fn main() {
+    // Logging setup
+    logger::init().unwrap();
 
     // Argparse
     let args: Vec<String> = env::args().collect();
     let thermite_args = parse_opts(args);
 
-    println!("Blocksize {}", thermite_args.blocksize);
-    println!("Pagesize {}", thermite_args.pagesize);
-    print!("Targets ");
+    info!("Blocksize: {}", thermite_args.blocksize);
+    info!("Pagesize: {}", thermite_args.pagesize);
     for t in &thermite_args.target {
-        print!("{} ", t);
+        info!("Target found: {} ", t);
     }
-    println!("");
-
+ 
     let mut options = fs::OpenOptions::new();
     options.read(true).write(true);
 
