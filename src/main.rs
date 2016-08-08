@@ -62,7 +62,7 @@ enum DataType {
 }
 
 fn random_bytes(n: usize) -> Vec<u8> {
-    (0..n).map(|_| rand::random::<u8>()).collect()
+    rand::thread_rng().gen_iter().filter(|&b| b != 0).take(n).collect()
 }
 
 #[inline(always)]
