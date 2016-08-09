@@ -2,7 +2,7 @@
 
 extern crate num;
 
-use num::{PrimInt,One};
+use num::{PrimInt, One};
 pub static LCG_A: u64 = 22695477;
 pub static LCG_C: u64 = 1;
 
@@ -18,7 +18,7 @@ impl Iterator for LCG {
 
     fn next(&mut self) -> Option<u64> {
         let this_iter = self.curr;
-        
+
         let v = self.a * self.curr + self.c;
         let next = mod_power2(v, self.m);
         self.curr = next;
@@ -38,7 +38,7 @@ impl LCG {
     }
 }
 
-fn mod_power2<T: PrimInt+One>(n: T, m: T) -> T {
+fn mod_power2<T: PrimInt + One>(n: T, m: T) -> T {
     if m.count_ones() == 1 {
         n & (m - T::one())
     } else {

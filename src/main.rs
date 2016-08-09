@@ -21,6 +21,7 @@ extern crate num;
 #[macro_use]
 extern crate log;
 
+use std::collections::HashMap;
 use std::env;
 use std::process;
 use std::fs;
@@ -30,7 +31,7 @@ use std::time::Instant;
 use std::thread;
 use std::sync::{Arc, Mutex};
 use getopts::Options;
-use std::ops::Index;
+use std::ops::IndexMut;
 
 mod lcg;
 mod watchdog;
@@ -45,6 +46,11 @@ struct ThermiteOptions {
     endblock: u64,
     data: DataType,
     interval: u64,
+}
+
+pub struct FileTarget {
+    target: String,
+    fd: fs::File,
 }
 
 #[derive(PartialEq)]
@@ -223,17 +229,34 @@ fn parse_opts(args: Vec<String>) -> ThermiteOptions {
     }
 }
 
-fn run_io(fds: &[fs::File], args: &ThermiteOptions) -> std::io::Result<()> {
+fn run_io(args: &ThermiteOptions) -> std::io::Result<()> {
+    let mut options = fs::OpenOptions::new();
+    options.read(true).write(true);
+
+    let mut file_targets: Vec<FileTarget> = args.target
+        .as_slice()
+        .into_iter()
+        .map(|f| match options.open(f) {
+            Ok(file) => {
+                FileTarget {
+                    fd: file,
+                    target: f.to_string(),
+                }
+            }
+            Err(_) => panic!("Could not open file {}", f),
+        })
+        .collect();
+
     // Check that all the supplied file descriptors are trivially the same length
-    let length = fds.index(0).seek(SeekFrom::End(0)).unwrap();
-    for mut fd in fds {
-        if fd.seek(SeekFrom::End(0)).unwrap() != length {
+    let length = file_targets.index_mut(0).fd.seek(SeekFrom::End(0)).unwrap();
+    for file_target in &mut file_targets {
+        if file_target.fd.seek(SeekFrom::End(0)).unwrap() != length {
             error_exit!(1, "Supplied target files are different sizes!");
         }
     }
 
 
-    let end = fds.index(0).seek(SeekFrom::End(0)).unwrap();
+    let end = file_targets.index_mut(0).fd.seek(SeekFrom::End(0)).unwrap();
     let mut end_block = end / args.blocksize;
     if args.endblock != 0 {
         end_block = args.endblock;
@@ -266,10 +289,14 @@ fn run_io(fds: &[fs::File], args: &ThermiteOptions) -> std::io::Result<()> {
     let mut generator = lcg::LCG::new(seed, power2);
 
     // Watchdog shared memory
-    let last_io = Arc::new(Mutex::new(Instant::now()));
-    let shared = last_io.clone();
+    let last_io_times = Arc::new(Mutex::new(HashMap::new()));
+    for ft in &file_targets {
+        let mut map = last_io_times.lock().unwrap();
+        map.insert(ft.target.clone(), Instant::now());
+    }
+    let shared = last_io_times.clone();
     thread::spawn(move || {
-        watchdog::watch(shared.clone(), 2u64, 3u64);
+        watchdog::watch(shared, 2u64, 3u64);
     });
 
     loop {
@@ -305,11 +332,13 @@ fn run_io(fds: &[fs::File], args: &ThermiteOptions) -> std::io::Result<()> {
             }
         };
 
-        for mut fd in fds {
-            try!(fd.seek(SeekFrom::Start(chosen_offset)));
-            try!(fd.write(&data[..]));
-            let mut last_io_guard = last_io.lock().unwrap();
-            *last_io_guard = Instant::now();
+        for mut ft in &mut file_targets {
+            try!(ft.fd.seek(SeekFrom::Start(chosen_offset)));
+            try!(ft.fd.write(&data[..]));
+            let mut last_io_guard = last_io_times.lock().unwrap();
+            if let Some(x) = last_io_guard.get_mut(&ft.target) {
+                *x = Instant::now();
+            }
         }
 
         xor_scramble(&mut data, args.pagesize, iterations);
@@ -355,19 +384,7 @@ fn main() {
     for t in &thermite_args.target {
         info!("Target found: {} ", t);
     }
- 
-    let mut options = fs::OpenOptions::new();
-    options.read(true).write(true);
-
-    let fds: Vec<std::fs::File> = thermite_args.target
-        .as_slice()
-        .into_iter()
-        .map(|f| match options.open(f) {
-            Ok(file) => file,
-            Err(_) => panic!("Could not open file {}", f),
-        })
-        .collect();
 
     // Drop the result from the IO as it's just an Ok unit 'Ok(())'
-    let _ = run_io(&fds, &thermite_args);
+    let _ = run_io(&thermite_args);
 }
