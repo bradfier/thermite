@@ -19,7 +19,7 @@ Options:
     -h, --help          print this help text
     -m, --mode          I/O mode, 'sequential' or 'random' or 'random100'
     -b, --blocksize     block size to write
-    -p, --pagesize      dedupe page-size (16384 for 3PAR)
+    -p, --pagesize      page size over which to ensure uniqueness
     -f, --file /dev/sdX target file or block device
 ```
 

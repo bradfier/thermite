@@ -1,3 +1,6 @@
+// Copyright 2015 Thermite Developers. See the LICENSE
+// file at the top-level directory of this distribution
+
 // IO Stall Monitor
 extern crate log;
 

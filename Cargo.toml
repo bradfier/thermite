@@ -1,10 +1,10 @@
 [package]
 name = "thermite"
 version = "0.3.0"
-authors = ["Richard Bradfield <richard.bradfield@hpe.com>",
+authors = ["Richard Bradfield <bradfier@fstab.me>",
            "Steven Williamson <steven.williamson@hpe.com>"]
 license = "GPLv3"
-repository = "https://github.com/bradfirj/thermite"
+repository = "https://github.com/bradfier/thermite"
 description = """
 Thermite, a random I/O generation tool, written in Rust.
 """

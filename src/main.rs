@@ -1,5 +1,5 @@
 // Thermite - An I/O generation tool in Rust
-// Copyright (C) 2015 Richard Bradfield
+// Copyright 2015 Thermite Developers
 //
 // This program is free software: you can redistribute it and/or modify
 // it under the terms of the GNU General Public License as published by
@@ -129,7 +129,7 @@ fn parse_opts(args: Vec<String>) -> ThermiteOptions {
                 "the ending block given the specified blocksize",
                 "");
     opts.optopt("b", "blocksize", "block size to write", "");
-    opts.optopt("p", "pagesize", "dedupe page-size (16384 for 3PAR)", "");
+    opts.optopt("p", "pagesize", "page size over which to ensure uniqueness", "");
     opts.optopt("i",
                 "interval",
                 "number of blocks to skip between write ops",
